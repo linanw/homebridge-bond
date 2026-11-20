@@ -24,8 +24,7 @@ export class BondApi {
   private bondToken: string;
   private uri: BondUri;
   private ms_between_actions?: number;
-  private queueNextRequest = false;
-  private requestQueue: {device: Device, action: Action, body: unknown}[] = [];
+  private nextAction: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly platform: BondPlatform,
@@ -106,31 +105,15 @@ export class BondApi {
 
   // Actions
 
-  private action(device: Device, action: Action, body: unknown = {}): Promise<void> {
-    return this.ms_between_actions ? 
-      this.queueRequest(device, action, body) :
-      this.request(HTTPMethod.PUT, this.uri.action(device.id, action), body);
-  }
-
-  private queueRequest(device: Device, action: Action, body: unknown): Promise<void> {
-    if (this.queueNextRequest) {
-      this.requestQueue.push({device, action, body});
-    } else {
-      this.queueNextRequest = true;
-      this.request(HTTPMethod.PUT, this.uri.action(device.id, action), body);
-      setTimeout(() => this.unQueueRequest(), this.ms_between_actions);
+  public action(device: Device, action: Action, body: unknown = {}): Promise<void> {
+    const send = () => this.request(HTTPMethod.PUT, this.uri.action(device.id, action), body);
+    if (!this.ms_between_actions) {
+      return send();
     }
-    return Promise.resolve();
-  }
-
-  private unQueueRequest() {
-    const next = this.requestQueue.shift();
-    if (next) {
-      this.request(HTTPMethod.PUT, this.uri.action(next.device.id, next.action), next.body);
-      setTimeout(() => this.unQueueRequest(), this.ms_between_actions);
-    } else {
-      this.queueNextRequest = false;
-    }
+    const result = this.nextAction.then(send);
+    const pause = () => new Promise<void>(resolve => setTimeout(resolve, this.ms_between_actions));
+    this.nextAction = result.then(pause, pause);
+    return result;
   }
 
   public toggleLight(device: Device): Promise<void> {
@@ -314,18 +297,12 @@ export class BondApi {
         this.platform.log.debug(`Response (${bondUuid}) [${method} ${uri}] - ${JSON.stringify(response.data)}`);
         return response.data;
       })
-      .catch((error: Error | AxiosError) =>  {
-        if (axios.isAxiosError(error) && error.response) {
-          const response = error.response;
-          switch (response.status) {
-            case 401:
-              this.platform.log.error('Unauthorized. Please check the `token` in your config to see if it is correct.');
-              return;
-            default:
-              this.platform.log.error(`A request error occurred: [status] ${response.status} [statusText] ${response.statusText}`);
-          }
-        } else {
-          this.platform.log.error(`A request error occurred: ${JSON.stringify(error)}`);
+      .catch((error: Error | AxiosError) => {
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+        const message = status ? `Bond returned HTTP ${status}` : 'Bond request failed';
+        this.platform.log.error(message);
+        if (method === HTTPMethod.PUT) {
+          throw new Error(message);
         }
       });
   }

@@ -112,7 +112,7 @@ export class LightbulbService {
 
     Observer.set(this.brightness, async (value) => {
       if (value === 0) {
-        // Value of 0 is the same as turning the light off. 
+        // Value of 0 is the same as turning the light off.
         // Ignore and return.
         return;
       }
@@ -151,7 +151,7 @@ export class SwitchService {
   }
 }
 
-// ButtonService is a switch that resets itself after 500ms. This provides a 
+// ButtonService is a switch that resets itself after 500ms. This provides a
 // button like experience that isn't available in homebridge.
 export class ButtonService {
   on: Characteristic
@@ -273,7 +273,7 @@ export class FlameService {
 
     Observer.set(this.flame, async (value) => {
       if (value === 0) {
-        // Value of 0 is the same as turning the flame off. 
+        // Value of 0 is the same as turning the flame off.
         // Ignore and return.
         return;
       }

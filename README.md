@@ -1,3 +1,11 @@
+# Bond for Homebridge with Matter
+
+This fork of aarons22/homebridge-bond 3.3.0 keeps the Bond platform identifier and existing HomeKit accessories. The Matter edition targets Homebridge 2.4.0. Install the tagged fork and enable Matter on the Bond child bridge. Pair that bridge using its own Matter QR code in Homebridge UI.
+
+Matter endpoints use the Bond bridge and device IDs for identity. Ceiling fans with absolute speed control expose Fan Control. Independently controllable upper and lower lights get separate endpoints. Generic devices with TurnOn and TurnOff expose an on/off outlet. Shades with Open, Close and Stop expose window covering commands. Percentage positioning requires SetPosition. Bond-reported state and BPUP updates supply the state shown to controllers. RF equipment without physical feedback reports the state tracked by Bond. Devices with only toggle actions keep their original HomeKit controls.
+
+## Upstream documentation
+
 [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 [![npm](https://badgen.net/npm/v/homebridge-bond)](https://www.npmjs.com/package/homebridge-bond)
 [![npm](https://badgen.net/npm/dt/homebridge-bond)](https://www.npmjs.com/package/homebridge-bond)

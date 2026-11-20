@@ -4,12 +4,19 @@ import { BondAccessory } from './platformAccessory';
 import { BondPlatformConfig } from './interface/config';
 import { Device } from './interface/Device';
 import { PLUGIN_NAME, PLATFORM_NAME } from './settings';
+import { BondMatter } from './matter';
+import type { MatterAccessory } from 'homebridge';
 import dgram from 'dgram';
 
 export class BondPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
   public readonly UUIDGen = this.api.hap.uuid;
+
+  private readonly matterBridge = new BondMatter(this);
+  configureMatterAccessory(accessory: MatterAccessory) {
+    this.matterBridge.restore(accessory);
+  }
 
   private accessories: PlatformAccessory[] = [];
   private bonds: Bond[] | undefined;
@@ -25,11 +32,11 @@ export class BondPlatform implements DynamicPlatformPlugin {
     }
 
     if(!BondPlatformConfig.isValid(this)) {
-      this.log.error(`Config: ${JSON.stringify(config, null, 2)}`);
+      this.log.error('Invalid Bond configuration');
       return;
     }
     
-    this.log.debug(`Config: ${JSON.stringify(config, null, 2)}`);
+
 
     api.on('didFinishLaunching', () => {
       // Delaying the initialization of bonds property because we need to
@@ -65,6 +72,9 @@ export class BondPlatform implements DynamicPlatformPlugin {
       this.log(`${this.accessories.length} cached accessories were loaded`);
       this.bonds.forEach(bond => {
         this.getDevices(bond);
+        if (this.api.matter) {
+          void this.matterBridge.discover(bond).catch(() => this.log.error('Bond Matter discovery failed'));
+        }
         this.setupBPUP(bond);
       });
     });
@@ -244,7 +254,7 @@ export class BondPlatform implements DynamicPlatformPlugin {
       });
     }
     send(); 
-    // From Bond API Docs: The client should continue to send the Keep-Alive datagram on 
+    // From Bond API Docs: The client should continue to send the Keep-Alive datagram on
     // the same socket every 60 seconds to keep the connection active.
     setInterval(send, 1000 * 60);
 
@@ -253,6 +263,10 @@ export class BondPlatform implements DynamicPlatformPlugin {
       const packet = JSON.parse(msg) as BPUPPacket;
       log.debug(`UDP Message received from ${remote.address}:${remote.port} - ${msg}`);
       bond.receivedBPUPPacket(packet);
+      const topic = /^devices\/([^/]+)\/state$/.exec(packet.t || '');
+      if (topic && packet.b) {
+        this.matterBridge.changed(bond, topic[1], packet.b);
+      }
     });
 
     client.on('close', () => {

@@ -1,0 +1,63 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BondConfig = exports.BondPlatformConfig = void 0;
+// eslint-disable-next-line @typescript-eslint/no-namespace
+var BondPlatformConfig;
+(function (BondPlatformConfig) {
+    function isValid(platform) {
+        const cast = platform.config;
+        function evaluate(type, key) {
+            const value = cast[key];
+            if (value !== undefined && typeof (value) !== type) {
+                platform.log.error(`${key} has invalid value: ${value}. Expected ${type}, got ${typeof (value)}.`);
+                return false;
+            }
+            return true;
+        }
+        const validDimmer = evaluate('boolean', 'include_dimmer');
+        const validFanSpeed = evaluate('boolean', 'fan_speed_values');
+        const validToggleState = evaluate('boolean', 'include_toggle_state');
+        if (cast.bonds === undefined || cast.bonds.length === 0) {
+            platform.log.error('Missing bonds in config');
+            return false;
+        }
+        const bondsValid = cast.bonds.map(bond => {
+            return BondConfig.isValid(platform, bond);
+        }).every(v => v === true);
+        return validDimmer && validFanSpeed && validToggleState && bondsValid;
+    }
+    BondPlatformConfig.isValid = isValid;
+})(BondPlatformConfig || (exports.BondPlatformConfig = BondPlatformConfig = {}));
+// eslint-disable-next-line @typescript-eslint/no-namespace
+var BondConfig;
+(function (BondConfig) {
+    function isValid(platform, config) {
+        function evaluate(type, key, value) {
+            if (value === undefined) {
+                platform.log.error(`Missing ${key} in BondConfig.`);
+                return false;
+            }
+            if (typeof (value) !== type) {
+                platform.log.error(`BondConfig ${key} has invalid value: ${value}. Expected ${type}, got ${typeof (value)}.`);
+                return false;
+            }
+            return true;
+        }
+        const validIP = evaluate('string', 'ip_address', config.ip_address);
+        const validToken = evaluate('string', 'token', config.token);
+        let validHideDeviceIds = true;
+        if (config.hide_device_ids !== undefined) {
+            validHideDeviceIds = config.hide_device_ids.map(id => {
+                if (typeof (id) !== 'string') {
+                    platform.log.error(`hide_device_ids contains invalid value: ${id}. Expected string, got ${typeof (id)}.`);
+                    return false;
+                }
+                return true;
+            }).every(v => v === true);
+        }
+        const validSpaceOutActions = config.ms_between_actions === undefined ||
+            (typeof (config.ms_between_actions) === 'number' && Number.isInteger(config.ms_between_actions) && config.ms_between_actions > 0);
+        return validIP && validToken && validHideDeviceIds && validSpaceOutActions;
+    }
+    BondConfig.isValid = isValid;
+})(BondConfig || (exports.BondConfig = BondConfig = {}));

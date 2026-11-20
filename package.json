@@ -1,6 +1,6 @@
 {
   "name": "homebridge-bond",
-  "version": "3.3.0",
+  "version": "3.3.1-matter.1",
   "description": "A homebridge plugin to control your Bond devices over the v2 API.",
   "license": "MIT",
   "main": "dist/index.js",
@@ -18,14 +18,16 @@
     "bond",
     "bond-home",
     "rf",
-    "ir"
+    "ir",
+    "supports-hap",
+    "supports-matter"
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/aarons22/homebridge-bond.git"
+    "url": "git+https://github.com/linanw/homebridge-bond.git"
   },
   "bugs": {
-    "url": "http://github.com/aarons22/homebridge-bond/issues"
+    "url": "https://github.com/linanw/homebridge-bond/issues"
   },
   "engines": {
     "node": "^18.20.4 || ^20.15.1 || ^22 || ^24",
@@ -40,7 +42,7 @@
     "@typescript-eslint/parser": "^4.18.0",
     "chai": "^4.2.0",
     "eslint": "^7.22.0",
-    "homebridge": "^2.0.0-beta.68",
+    "homebridge": "2.4.0",
     "mocha": "^9.1.2",
     "nodemon": "^3.1.7",
     "nyc": "^15.1.0",
@@ -54,6 +56,10 @@
     "biguint-format": "^1.0.2",
     "flake-idgen": "^1.4.0"
   },
-  "homepage": "https://github.com/aarons22/homebridge-bond#readme",
-  "author": "Aaron Sapp"
+  "homepage": "https://github.com/linanw/homebridge-bond",
+  "author": "Aaron Sapp",
+  "files": [
+    "dist",
+    "config.schema.json"
+  ]
 }
