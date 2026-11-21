@@ -84,6 +84,16 @@ class BondApi {
             });
         });
     }
+    async readMetadata(id) {
+        const row = await this.request(HTTPMethod.GET, this.uri.device(id));
+        if (typeof (row === null || row === void 0 ? void 0 : row.name) !== 'string' || typeof row.location !== 'string') {
+            throw new Error('Bond metadata unavailable');
+        }
+        return { name: row.name, location: row.location };
+    }
+    async writeMetadata(id, patch) {
+        await this.request(HTTPMethod.PATCH, this.uri.device(id), patch);
+    }
     // Actions
     action(device, action, body = {}) {
         const send = () => this.request(HTTPMethod.PUT, this.uri.action(device.id, action), body);
@@ -247,7 +257,7 @@ class BondApi {
             const status = axios_1.default.isAxiosError(error) ? (_a = error.response) === null || _a === void 0 ? void 0 : _a.status : undefined;
             const message = status ? `Bond returned HTTP ${status}` : 'Bond request failed';
             this.platform.log.error(message);
-            if (method === HTTPMethod.PUT) {
+            if (method !== HTTPMethod.GET) {
                 throw new Error(message);
             }
         });

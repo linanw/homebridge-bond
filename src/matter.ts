@@ -1,3 +1,5 @@
+import { matterLabel } from './matterLabel';
+import loadMetadata = require('../lib/load.cjs');
 import type { MatterAccessory, MatterAPI } from 'homebridge';
 import type { BondPlatform } from './platform';
 import type { Bond, BondState } from './interface/Bond';
@@ -20,7 +22,7 @@ export function endpoints(api: MatterAPI, d: Device, initial: BondState, send: S
   function add(key: string, suffix: string, deviceType: MatterAccessory['deviceType'],
     state: Endpoint['state'], handlers: MatterAccessory['handlers']) {
     const serial = d.uniqueId + '-' + key;
-    result.push({ state, accessory: { UUID: api.uuid.generate(serial), displayName: (Device.displayName(d).trim() + suffix),
+    result.push({ state, accessory: { UUID: api.uuid.generate(serial), displayName: matterLabel(Device.displayName(d).trim() + suffix),
       deviceType, serialNumber: serial, manufacturer: 'Bond', model: d.type, context: { bondId: d.bondId },
       clusters: state(initial), handlers } });
   }
@@ -147,7 +149,23 @@ export class BondMatter {
       if (!list.length) {
         continue;
       }
+      // One HAP accessory and one Bond metadata record can back several Matter
+      // controls. Expose the editor on the primary endpoint only.
+      const primary = list[0].accessory;
+      const {attachMetadata} = await loadMetadata();
+      const metadata = await attachMetadata(primary, {
+        directory: this.platform.api.user.storagePath(), identity: d.uniqueId,
+        initial: {name: d.name, location: d.location}, locations: devices.map(row => row.location),
+        read: () => bond.api.readMetadata(d.id),
+        write: (patch: {name?: string; location?: string}) => bond.api.writeMetadata(d.id, patch),
+        observed: (name: string, location: string) => this.platform.updateCachedMetadata(d.uniqueId, name, location),
+        update: (key: string, attrs: Record<string, unknown>) => api.updateAccessoryState(primary.UUID, key, attrs),
+        label: matterLabel,
+        warn: () => this.platform.log.warn('Bond metadata refresh failed for %s', d.uniqueId),
+      });
       await api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, list.map(e => e.accessory));
+      await metadata.start();
+      this.platform.api.on('shutdown', () => metadata.stop());
       let serial = Promise.resolve();
       this.listeners.set(d.uniqueId, patch => {
         state = { ...state, ...patch };

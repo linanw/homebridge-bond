@@ -99,6 +99,18 @@ class BondPlatform {
             this.log(`Error getting devices: ${error}`);
         });
     }
+    updateCachedMetadata(identity, name, location) {
+        var _a;
+        const accessory = this.accessories.find(a => { var _a; return ((_a = a.context.device) === null || _a === void 0 ? void 0 : _a.uniqueId) === identity; });
+        if (!accessory) {
+            return;
+        }
+        const device = accessory.context.device;
+        Object.assign(device, { name, location });
+        accessory.displayName = Device_1.Device.displayName(device).trim();
+        (_a = accessory.getService(this.Service.AccessoryInformation)) === null || _a === void 0 ? void 0 : _a.updateCharacteristic(this.Characteristic.Name, name);
+        this.api.updatePlatformAccessories([accessory]);
+    }
     cleanupBondData(bond) {
         // Data cleanup - Make sure all cached devices have uniqueId and bondId on them
         bond.deviceIds.forEach(deviceId => {

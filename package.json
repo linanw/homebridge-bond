@@ -1,6 +1,6 @@
 {
-  "name": "homebridge-bond",
-  "version": "3.3.1-matter.1",
+  "name": "@linanw/homebridge-bond",
+  "version": "3.3.2-beta.1",
   "description": "A homebridge plugin to control your Bond devices over the v2 API.",
   "license": "MIT",
   "main": "dist/index.js",
@@ -10,7 +10,7 @@
     "dev": "tsc --watch & nodemon dist",
     "build": "rimraf ./dist && tsc -p tsconfig-build.json",
     "prepublishOnly": "npm run lint && npm run build",
-    "test": "mocha -r ts-node/register tests/**/*.spec.ts",
+    "test": "mocha -r ts-node/register tests/**/*.spec.ts && node --test tests/metadata.test.mjs",
     "coverage": "nyc -r lcov -e .ts -x \"*.spec.ts\" npm run test"
   },
   "keywords": [
@@ -60,6 +60,10 @@
   "author": "Aaron Sapp",
   "files": [
     "dist",
-    "config.schema.json"
-  ]
+    "config.schema.json",
+    "lib"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

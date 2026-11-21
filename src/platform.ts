@@ -114,6 +114,18 @@ export class BondPlatform implements DynamicPlatformPlugin {
       });
   }
 
+  updateCachedMetadata(identity: string, name: string, location: string) {
+    const accessory = this.accessories.find(a => a.context.device?.uniqueId === identity);
+    if (!accessory) {
+      return;
+    }
+    const device = accessory.context.device;
+    Object.assign(device, {name, location});
+    accessory.displayName = Device.displayName(device).trim();
+    accessory.getService(this.Service.AccessoryInformation)?.updateCharacteristic(this.Characteristic.Name, name);
+    this.api.updatePlatformAccessories([accessory]);
+  }
+
   private cleanupBondData(bond: Bond) {
     // Data cleanup - Make sure all cached devices have uniqueId and bondId on them
     bond.deviceIds.forEach(deviceId => {

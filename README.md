@@ -112,3 +112,18 @@ To use the local version of the plugin in homebridge, I run `npm link` in the di
 ## Support
 
 If you have general questions about usage, please use the [Discussions](https://github.com/aarons22/homebridge-bond/discussions) tab! If you are unsure if a problem you are having is actually a bug/issue with the plugin, that is a great place to start 😄.
+
+## MatterDesk name and room synchronization
+
+Install the public scoped package `@linanw/homebridge-bond` on Homebridge 2.4 with Matter enabled on the Bond child bridge. The upstream baseline is aarons22/homebridge-bond 3.3.0. Keep the existing `Bond` platform configuration, child bridge username, cached accessory UUIDs and Matter fabric. For an existing unscoped install, stop the bridge, back up the old package, configuration, accessory caches and Matter storage, and replace the old installation with the scoped package. Migrate the `plugin` owner from `homebridge-bond` to `@linanw/homebridge-bond` in the Bond child's HAP and Matter accessory caches. Restart and compare the published endpoint IDs and serial numbers against the backup. To roll back, stop the bridge and restore the old installation, package manifest and matching caches together.
+
+Open a Bond accessory in MatterDesk and choose **同步名称和房间**. A fan with multiple controls exposes one editor on its primary endpoint because the controls share one Bond device. A rename or move PATCHes only the requested fields, then reads them from the bridge. Bond stores the location as a string. The room picker starts with the locations observed on that Bond bridge at discovery. A configured Apple binding restricts the picker to explicitly associated rooms. MatterDesk reports each destination independently. A missing Apple binding produces an Apple delivery failure while Bond can still confirm its own result. [Bond Local API](https://docs-local.appbond.com/)
+
+### Apple Home on iPhone
+
+1. Build `companion/BondHome.xcodeproj` in Xcode with a development team that can sign the HomeKit entitlement. Install on an iPhone with access to the intended Apple home. Allow Home access when iOS prompts.
+2. Homebridge creates one exchange folder per Bond physical identity at `<Homebridge storage>/bond-homekit/<identity>`. Grant the intended NAS user read/write access to that device folder. Keep the private `bond-metadata` journal under Homebridge ownership. Limit SMB access to trusted accounts because the exchange carries room assignments and verified results.
+3. In the iPhone Files app connect to the NAS. In **Bond 家庭同步**, select the specific exchange folder. Choose the Apple home and the corresponding accessory, pair the desired Bond locations to existing Apple rooms, then confirm the binding. Identically named accessories can be distinguished by their room and identifier suffix.
+4. Keep the app open with access to that folder during the edit. Apple confirmation includes the home and accessory identifiers, actual accessory name and actual room UUID read from HomeKit. The plugin waits up to five minutes for delivery. On timeout reopen the companion and verify the current values before making a fresh edit. The app does not run as an always-on iOS background service.
+
+A successful Matter command acknowledges acceptance. Use **来源系统 · 已核实** for Bond and **Apple 家庭 · 已核实** for HomeKit. Only selected fields are compared for each request. The HomeKit companion stores the confirmed binding on the iPhone and the exchange folder carries the matching public identifiers. Local aliases in MatterDesk remain available.

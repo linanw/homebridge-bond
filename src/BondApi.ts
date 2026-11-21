@@ -103,6 +103,18 @@ export class BondApi {
     });
   }
 
+  async readMetadata(id: string): Promise<{name: string; location: string}> {
+    const row = await this.request(HTTPMethod.GET, this.uri.device(id));
+    if (typeof row?.name !== 'string' || typeof row.location !== 'string') {
+      throw new Error('Bond metadata unavailable');
+    }
+    return {name: row.name, location: row.location};
+  }
+
+  async writeMetadata(id: string, patch: {name?: string; location?: string}) {
+    await this.request(HTTPMethod.PATCH, this.uri.device(id), patch);
+  }
+
   // Actions
 
   public action(device: Device, action: Action, body: unknown = {}): Promise<void> {
@@ -301,7 +313,7 @@ export class BondApi {
         const status = axios.isAxiosError(error) ? error.response?.status : undefined;
         const message = status ? `Bond returned HTTP ${status}` : 'Bond request failed';
         this.platform.log.error(message);
-        if (method === HTTPMethod.PUT) {
+        if (method !== HTTPMethod.GET) {
           throw new Error(message);
         }
       });

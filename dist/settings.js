@@ -8,4 +8,4 @@ exports.PLATFORM_NAME = 'Bond';
 /**
  * This must match the name of your plugin as defined the package.json
  */
-exports.PLUGIN_NAME = 'homebridge-bond';
+exports.PLUGIN_NAME = '@linanw/homebridge-bond';
