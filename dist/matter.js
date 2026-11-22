@@ -120,7 +120,7 @@ class BondMatter {
         (_a = this.listeners.get(bond.uniqueDeviceId(id))) === null || _a === void 0 ? void 0 : _a(patch);
     }
     async discover(bond) {
-        var _a;
+        var _a, _b;
         const api = this.platform.api.matter;
         if (!api || !((_a = bond.version) === null || _a === void 0 ? void 0 : _a.bondid)) {
             return;
@@ -147,7 +147,14 @@ class BondMatter {
             // One HAP accessory and one Bond metadata record can back several Matter
             // controls. Expose the editor on the primary endpoint only.
             const primary = list[0].accessory;
-            const { attachMetadata } = await loadMetadata();
+            const { attachFanControl, attachMetadata, preserveBridgedIdentity } = await loadMetadata();
+            for (const { accessory } of list) {
+                attachFanControl(accessory);
+                // Composed endpoints can be rebuilt when reattached to the restored
+                // cache. Carry over the previous bridged identity through the rebuild.
+                const restored = await api.getAccessoryState(accessory.UUID, 'bridgedDeviceBasicInformation');
+                preserveBridgedIdentity(accessory, restored === null || restored === void 0 ? void 0 : restored.uniqueId);
+            }
             const metadata = await attachMetadata(primary, {
                 directory: this.platform.api.user.storagePath(), identity: d.uniqueId,
                 initial: { name: d.name, location: d.location }, locations: devices.map(row => row.location),
@@ -162,7 +169,7 @@ class BondMatter {
             await metadata.start();
             this.platform.api.on('shutdown', () => metadata.stop());
             let serial = Promise.resolve();
-            this.listeners.set(d.uniqueId, patch => {
+            const publishState = (patch) => {
                 state = { ...state, ...patch };
                 const snapshot = state;
                 serial = serial.then(async () => {
@@ -172,7 +179,12 @@ class BondMatter {
                         }
                     }
                 }).catch(() => this.platform.log.warn('Could not sync a Bond Matter state update'));
-            });
+            };
+            this.listeners.set(d.uniqueId, publishState);
+            if ((_b = primary.clusters) === null || _b === void 0 ? void 0 : _b.fanControl) {
+                // Homebridge restores cached cluster values during registration.
+                publishState(state);
+            }
             for (const e of list) {
                 keep.add(e.accessory.UUID);
             }
