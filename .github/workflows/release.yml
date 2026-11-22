@@ -38,6 +38,9 @@ jobs:
               pkg.publishConfig?.access !== 'public') {
             throw new Error('Expected the public Bond package from the linanw fork');
           }
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
+            throw new Error('Expected an npm release version without build metadata');
+          }
           if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF !== `refs/tags/v${version}`) {
             throw new Error(`Tag must be v${version}`);
           }
@@ -96,7 +99,14 @@ jobs:
           archive="linanw-homebridge-bond-$VERSION.tgz"
           archive_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
           test "$archive_integrity" = "$INTEGRITY"
-          npm publish "$archive" --ignore-scripts --access public --tag "$DIST_TAG"
+          existing="$RUNNER_TEMP/bond-published.json"
+          status=$(curl --silent --show-error --retry 2 --max-time 10 --output "$existing" --write-out '%{http_code}' \
+            "https://registry.npmjs.org/@linanw%2fhomebridge-bond/$VERSION")
+          case "$status" in
+            404) npm publish "$archive" --ignore-scripts --access public --tag "$DIST_TAG" ;;
+            200) test "$(jq -er '.dist.integrity' "$existing")" = "$INTEGRITY" ;;
+            *) echo "Could not check npm for $VERSION (HTTP $status)" >&2; exit 1 ;;
+          esac
       - name: Verify the public npm release
         run: |
           node <<'NODE'
