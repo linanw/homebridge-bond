@@ -2,169 +2,150 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'package.json'
+    tags:
+      - 'v[0-9]*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  check-version:
+  pack:
+    if: github.repository == 'linanw/homebridge-bond' && (github.event_name == 'push' || github.ref == 'refs/heads/matter')
     runs-on: ubuntu-latest
     outputs:
-      version-changed: ${{ steps.version-check.outputs.changed }}
-      new-version: ${{ steps.version-check.outputs.version }}
-    
+      version: ${{ steps.package.outputs.version }}
+      dist-tag: ${{ steps.package.outputs.dist-tag }}
+      integrity: ${{ steps.archive.outputs.integrity }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: '20.x'
-          registry-url: 'https://registry.npmjs.org'
-      
-      - name: Check if version changed
-        id: version-check
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify the package name and version tag
+        id: package
         run: |
-          # Get current version from package.json
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          
-          echo "Package name: $PACKAGE_NAME"
-          echo "Current version: $CURRENT_VERSION"
-          
-          # Check whether this exact version is already published.
-          # `npm view <package> version` only reads the `latest` dist-tag, so
-          # prereleases published under tags like `beta` would be missed.
-          NPM_VERSION=$(npm view "$PACKAGE_NAME@$CURRENT_VERSION" version 2>/dev/null || true)
-          if [ -n "$NPM_VERSION" ]; then
-            echo "Published npm version: $NPM_VERSION"
-          else
-            echo "Published npm version: not found"
-          fi
-          
-          if [ -z "$NPM_VERSION" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            echo "✅ Version $CURRENT_VERSION is not published on npm yet"
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "⏭️  Version unchanged - $CURRENT_VERSION is already published on npm"
-          fi
+          node <<'NODE'
+          const { appendFileSync } = require('node:fs');
+          const pkg = require('./package.json');
+          const { version } = pkg;
 
-  publish-npm:
-    needs: check-version
-    if: needs.check-version.outputs.version-changed == 'true'
+          if (pkg.name !== '@linanw/homebridge-bond' ||
+              pkg.repository?.url !== 'git+https://github.com/linanw/homebridge-bond.git' ||
+              pkg.publishConfig?.access !== 'public') {
+            throw new Error('Expected the public Bond package from the linanw fork');
+          }
+          if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF !== `refs/tags/v${version}`) {
+            throw new Error(`Tag must be v${version}`);
+          }
+
+          const distTag = version.includes('-') ? 'beta' : 'latest';
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\ndist-tag=${distTag}\n`);
+          NODE
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - name: Inspect and test the npm tarball
+        id: archive
+        run: |
+          mkdir -p "$RUNNER_TEMP/bond-release"
+          npm pack --dry-run --ignore-scripts
+          npm pack --ignore-scripts --json --pack-destination "$RUNNER_TEMP/bond-release" > "$RUNNER_TEMP/bond-pack.json"
+          pack_info="$RUNNER_TEMP/bond-pack.json"
+          archive="$RUNNER_TEMP/bond-release/$(jq -er '.[0].filename' "$pack_info")"
+          install_dir="$RUNNER_TEMP/bond-pack-check"
+          npm install --prefix "$install_dir" --ignore-scripts --no-audit --no-fund "$archive"
+          ln -s "$PWD/node_modules/homebridge" "$install_dir/node_modules/homebridge"
+          BOND_TEST_INSTALLED_PACKAGE="$install_dir/node_modules/@linanw/homebridge-bond" node --test tests/fan-report.test.mjs
+          echo "integrity=$(jq -er '.[0].integrity' "$pack_info")" >> "$GITHUB_OUTPUT"
+      - name: Upload the tested tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: bond-release
+          path: ${{ runner.temp }}/bond-release/*.tgz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: pack
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # Required for OIDC authentication
-      contents: read  # Often needed for checkout
-    
+      id-token: write
+    concurrency:
+      group: bond-npm-publish
+      queue: max
+    env:
+      VERSION: ${{ needs.pack.outputs.version }}
+      DIST_TAG: ${{ needs.pack.outputs.dist-tag }}
+      INTEGRITY: ${{ needs.pack.outputs.integrity }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20.x'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Update npm to latest version for OIDC support
-        run: npm install -g npm@latest
-      
-      - name: Install dependencies
-        run: npm install
-      
-      - name: Build project
-        run: npm run build
-      
-      - name: Run tests
-        run: npm test
-      
-      - name: Publish to npm
+          node-version: '24'
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: bond-release
+      - name: Publish with npm Trusted Publishing
         run: |
-          VERSION="${{ needs.check-version.outputs.new-version }}"
-          if [[ "$VERSION" =~ -beta\. ]] || [[ "$VERSION" =~ -alpha\. ]] || [[ "$VERSION" =~ -rc\. ]]; then
-            echo "Publishing prerelease version $VERSION with 'beta' tag"
-            npm publish --tag beta
-          else
-            echo "Publishing stable version $VERSION"
-            npm publish
-          fi
-      
-      - name: Publication Summary
+          archive="linanw-homebridge-bond-$VERSION.tgz"
+          archive_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
+          test "$archive_integrity" = "$INTEGRITY"
+          npm publish "$archive" --ignore-scripts --access public --tag "$DIST_TAG"
+      - name: Verify the public npm release
         run: |
-          echo "### NPM Publication :package:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** ${{ needs.check-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Package:** homebridge-bond" >> $GITHUB_STEP_SUMMARY
-          echo "- **NPM URL:** https://www.npmjs.com/package/homebridge-bond/v/${{ needs.check-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
+          node <<'NODE'
+          const { setTimeout: sleep } = require('node:timers/promises');
+          const { VERSION, DIST_TAG, INTEGRITY } = process.env;
+          const registry = 'https://registry.npmjs.org';
+          const pkg = '@linanw%2fhomebridge-bond';
 
-  create-github-release:
-    needs: [check-version, publish-npm]
-    if: needs.check-version.outputs.version-changed == 'true'
+          (async () => {
+            for (let attempt = 0; attempt < 18; attempt++) {
+              const version = await fetch(`${registry}/${pkg}/${VERSION}`, { signal: AbortSignal.timeout(10000) });
+              const tags = await fetch(`${registry}/-/package/${pkg}/dist-tags`, { signal: AbortSignal.timeout(10000) });
+              if (version.ok && tags.ok) {
+                const record = await version.json();
+                if (record.dist.integrity !== INTEGRITY) {
+                  throw new Error('Published archive integrity does not match the tested archive');
+                }
+                if ((await tags.json())[DIST_TAG] === VERSION) {
+                  console.log(`Verified @linanw/homebridge-bond@${VERSION} on npm tag ${DIST_TAG} (${INTEGRITY})`);
+                  return;
+                }
+              }
+              await sleep(10000);
+            }
+            throw new Error(`npm did not expose ${VERSION} under ${DIST_TAG}`);
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+  github-release:
+    needs: [pack, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DIST_TAG: ${{ needs.pack.outputs.dist-tag }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Generate Release Notes
-        id: release-notes
+      - name: Create the release for the published tag
         run: |
-          VERSION="${{ needs.check-version.outputs.new-version }}"
-          
-          # Get the previous tag
-          PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
-          
-          # Generate changelog
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Generating changelog from $PREVIOUS_TAG to v$VERSION"
-            CHANGELOG=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
-          else
-            echo "No previous tag found, using all commits"
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exit 0
           fi
-          
-          # Create release notes
-          cat > release_notes.md << EOF
-          ## What's Changed
-          
-          $CHANGELOG
-          
-          ## Installation
-          
-          \`\`\`bash
-          npm install -g homebridge-bond@$VERSION
-          \`\`\`
-          
-          ## Links
-          
-          - [NPM Package](https://www.npmjs.com/package/homebridge-bond/v/$VERSION)
-          - [Changelog](https://github.com/aarons22/homebridge-bond/compare/$PREVIOUS_TAG...v$VERSION)
-          EOF
-      
-      - name: Create GitHub Release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: v${{ needs.check-version.outputs.new-version }}
-          name: v${{ needs.check-version.outputs.new-version }}
-          bodyFile: release_notes.md
-          draft: false
-          prerelease: ${{ contains(needs.check-version.outputs.new-version, '-') }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Release Summary
-        run: |
-          echo "### GitHub Release Created :tada:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** v${{ needs.check-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag:** v${{ needs.check-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Release URL:** https://github.com/aarons22/homebridge-bond/releases/tag/v${{ needs.check-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
+          options=()
+          if [[ "$DIST_TAG" == "beta" ]]; then
+            options+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${options[@]}" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --generate-notes \
+            --notes "Install from npm with \`npm install -g @linanw/homebridge-bond@${GITHUB_REF_NAME#v}\`."
