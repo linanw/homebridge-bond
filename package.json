@@ -1,6 +1,6 @@
 {
   "name": "@linanw/homebridge-bond",
-  "version": "3.3.2-beta.2",
+  "version": "3.3.2-beta.3",
   "description": "A homebridge plugin to control your Bond devices over the v2 API.",
   "license": "MIT",
   "main": "dist/index.js",
